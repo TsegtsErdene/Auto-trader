@@ -2,13 +2,14 @@
 //|  HotkeyTrader.mq5                                                |
 //|  Global-hotkey market-order EA for MetaTrader 5                  |
 //|                                                                  |
-//|    F1   → Market Buy  (enter long)                               |
-//|    F2   → Market Sell (enter short)                              |
-//|    F10  → Break Even      – SL to entry on all positions         |
-//|    F3   → 20-pip Break Even – SL locks +20 pips of profit        |
-//|    F5   → Trailing SL (one-shot) – SL to 10 pips from price      |
+//|    Numpad 1 → Market Buy  (enter long)                           |
+//|    Numpad 2 → Market Sell (enter short)                          |
+//|    Numpad 0 → Break Even        – SL to entry on all positions   |
+//|    Numpad 3 → 20-pip Break Even – SL locks +20 pips of profit    |
+//|    Numpad 5 → Trailing SL (one-shot) – SL to 10 pips from price  |
 //|                                                                  |
-//|  Works globally even when MT5 is minimized.                      |
+//|  Works globally even when MT5 is minimized. NumLock must be ON   |
+//|  so the keypad sends Numpad VK codes (0x60-0x69).                |
 //+------------------------------------------------------------------+
 
 #property copyright "HotkeyTrader"
@@ -23,11 +24,11 @@
 //--- Input parameters
 input string InpSymbol         = "XAUUSD"; // Trading symbol
 input double InpLots           = 0.01;     // Lot size per order
-input int    InpLongKey        = 0x70;     // Long  / Buy  key VK (F1)
-input int    InpShortKey       = 0x71;     // Short / Sell key VK (F2)
-input int    InpBEKey          = 0x79;     // Break Even key VK (F10 = Fn+0)
-input int    InpBE20Key        = 0x72;     // 20-pip Break Even key VK (F3)
-input int    InpTrailKey       = 0x74;     // Trailing SL key VK (F5)
+input int    InpLongKey        = 0x61;     // Long  / Buy  key VK (Numpad 1)
+input int    InpShortKey       = 0x62;     // Short / Sell key VK (Numpad 2)
+input int    InpBEKey          = 0x60;     // Break Even key VK (Numpad 0)
+input int    InpBE20Key        = 0x63;     // 20-pip Break Even key VK (Numpad 3)
+input int    InpTrailKey       = 0x65;     // Trailing SL key VK (Numpad 5)
 input int    InpPointsPerPip   = 10;       // Points per pip (gold: 10 → 1 pip = 0.10)
 input int    InpBE20Pips       = 20;       // Profit locked by 20-pip Break Even (pips)
 input int    InpTrailPips      = 10;       // Trailing SL distance from price (pips)

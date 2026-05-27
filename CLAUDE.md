@@ -23,14 +23,16 @@ The entire EA is a single polling loop. `EventSetMillisecondTimer(10)` drives `O
 **Key detection** uses `GetAsyncKeyState` (imported from `user32.dll`) so hotkeys fire globally, even when MT5 is not focused. All key state is read once at the top of `OnTimer` into local bools, then each action fires on its own key:
 
 ```
-F1  → DoBuy            (enter long)
-F2  → DoSell           (enter short)
-F10 → DoBreakEven(0)   (SL to entry on all positions)
-F3  → DoBreakEven(20)  (SL locks +20 pips of profit)
-F5  → DoTrailingStop   (one-shot: SL to 10 pips from current price)
+Numpad 1 → DoBuy            (enter long)
+Numpad 2 → DoSell           (enter short)
+Numpad 0 → DoBreakEven(0)   (SL to entry on all positions)
+Numpad 3 → DoBreakEven(20)  (SL locks +20 pips of profit)
+Numpad 5 → DoTrailingStop   (one-shot: SL to 10 pips from current price)
 ```
 
-The EA is always armed — there is no enable/disable gate. Pressing the buy/sell keys sends a market order immediately, in any focused app (note: F1 is the OS-wide Help key).
+The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69), which is what the user's "Fn + keypad number" presses produce. The Fn key itself is processed in keyboard firmware and is invisible to `GetAsyncKeyState`, so only the resulting numpad code is detectable — and only when **NumLock is ON** (NumLock OFF makes the keypad send navigation VKs instead). All five keys are input parameters, so they can be re-pointed from the EA dialog without recompiling.
+
+The EA is always armed — there is no enable/disable gate. Pressing the buy/sell keys sends a market order immediately.
 
 **Edge detection** — every action uses a `g_*Down` bool so it fires only once per keypress, not once per 10 ms tick.
 
@@ -50,11 +52,11 @@ Scans all 256 VK codes via `GetAsyncKeyState` on a 10 ms timer and prints the he
 |---|---|---|
 | `InpSymbol` | `XAUUSD` | Symbol for all operations |
 | `InpLots` | `0.01` | Lot size per order |
-| `InpLongKey` | `0x70` | VK code for Long/Buy key (F1) |
-| `InpShortKey` | `0x71` | VK code for Short/Sell key (F2) |
-| `InpBEKey` | `0x79` | VK code for Break Even key (F10 = Fn+0) |
-| `InpBE20Key` | `0x72` | VK code for 20-pip Break Even key (F3) |
-| `InpTrailKey` | `0x74` | VK code for Trailing SL key (F5) |
+| `InpLongKey` | `0x61` | VK code for Long/Buy key (Numpad 1) |
+| `InpShortKey` | `0x62` | VK code for Short/Sell key (Numpad 2) |
+| `InpBEKey` | `0x60` | VK code for Break Even key (Numpad 0) |
+| `InpBE20Key` | `0x63` | VK code for 20-pip Break Even key (Numpad 3) |
+| `InpTrailKey` | `0x65` | VK code for Trailing SL key (Numpad 5) |
 | `InpPointsPerPip` | `10` | Points per pip (gold: 10 → 1 pip = 0.10) |
 | `InpBE20Pips` | `20` | Profit locked by 20-pip Break Even (pips) |
 | `InpTrailPips` | `10` | Trailing SL distance from price (pips) |
