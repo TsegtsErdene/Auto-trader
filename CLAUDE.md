@@ -20,41 +20,25 @@ There is no automated test runner. Verification is done on a demo account by obs
 
 The entire EA is a single polling loop. `EventSetMillisecondTimer(10)` drives `OnTimer()` every 10 ms; `OnTick()` is intentionally empty.
 
-**Key detection** uses `GetAsyncKeyState` (imported from `user32.dll`) so hotkeys fire globally, even when MT5 is not focused. All key state is read once at the top of `OnTimer` into local bools (`buyNow`, `sellNow`, `altNow`, etc.), then evaluated in priority order:
+**Key detection** uses `GetAsyncKeyState` (imported from `user32.dll`) so hotkeys fire globally, even when MT5 is not focused. All key state is read once at the top of `OnTimer` into local bools, then each action fires on its own key:
 
 ```
-Alt+Buy → Flatten (highest priority, returns early)
-  └─ retries via g_flattenTicks for 50 ms after key release
-Alt+Sell → Half
-Alt+Enter → Break Even
-Alt+Insert → SL input popup
-Ctrl+Insert → Trade filter popup
-Ctrl+Shift → Trading toggle popup
-guard: if(!g_tradingEnabled) return
-Buy alone → DoBuy
-Sell alone → DoSell
+F1  → DoBuy            (enter long)
+F2  → DoSell           (enter short)
+F10 → DoBreakEven(0)   (SL to entry on all positions)
+F3  → DoBreakEven(20)  (SL locks +20 pips of profit)
+F5  → DoTrailingStop   (one-shot: SL to 10 pips from current price)
 ```
 
-**Edge detection** — every action uses a `g_*Down` bool so it fires only once per keypress, not once per 10 ms tick. Exception: flatten retries are intentional (g_flattenTicks).
+The EA is always armed — there is no enable/disable gate. Pressing the buy/sell keys sends a market order immediately, in any focused app (note: F1 is the OS-wide Help key).
 
-**Order dispatch** — buy/sell/flatten/half all use `OrderSendAsync` (fire-and-forget, no blocking). Break-even and set-SL use synchronous `OrderSend` because they modify existing positions and order matters. `SymbolFilling()` auto-selects IOC/FOK/Return based on `SYMBOL_FILLING_MODE`.
+**Edge detection** — every action uses a `g_*Down` bool so it fires only once per keypress, not once per 10 ms tick.
 
-**Trade exclusion** — `g_excludedTickets[]` holds ticket numbers that are skipped by all bulk operations (Flatten, Half, BE, Set SL). Populated by the trade filter popup. `IsExcluded(ticket)` checks this array.
+**Pips vs points** — `InpPointsPerPip` (default 10) converts pips to price: `pip = InpPointsPerPip × SYMBOL_POINT`. On a 2-digit gold quote that makes 1 pip = 0.10. `PipPrice()` and `MinStopDist()` (broker `SYMBOL_TRADE_STOPS_LEVEL`) centralize the math.
 
-**PowerShell popup pattern** — three popups (SL input, trade toggle, trade filter) follow the same pattern:
-1. EA writes a `.ps1` script to `MT5 Common Files\Files\` using `FileWrite`.
-2. EA launches it hidden via `ShellExecuteW` (from `shell32.dll`).
-3. PowerShell shows a WinForms dialog (`TopMost=$true`).
-4. User input is written to a result `.txt` file in the same folder.
-5. EA polls `FileIsExist()` in `OnTimer` and reads the result file.
+**Order dispatch** — buy/sell use `OrderSendAsync` (fire-and-forget). Break-even and trailing use synchronous `OrderSend` with `TRADE_ACTION_SLTP` because they modify existing positions. `SymbolFilling()` auto-selects IOC/FOK/Return based on `SYMBOL_FILLING_MODE`.
 
-**Trade filter popup specifically** uses two result files:
-- `ht_filter_result.txt` — written by Apply or OK; EA reads and updates `g_excludedTickets`, keeps `g_filterOpen=true`.
-- `ht_filter_done.txt` — written by FormClosed handler; EA sets `g_filterOpen=false` and stops the live data feed.
-
-While `g_filterOpen` is true, the EA writes `ht_positions_data.csv` every 500 ms (50 × 10 ms ticks) so the PowerShell ListView can update Price and P&L columns in real time without losing checkbox state.
-
-**Auto-disable** — trading disables automatically after 30 minutes of no activity (`g_lastTradeTime`). Re-enable via Ctrl+Shift popup.
+**Stop-move safety** — `DoBreakEven` and `DoTrailingStop` only ever *tighten* the stop (never widen risk) and skip any position where the target stop is closer to market than the broker's minimum stop distance, so a position whose price hasn't moved far enough into profit is left untouched. Both apply to every open position on `InpSymbol`.
 
 ### KeyDetector.mq5 — utility EA
 
@@ -66,19 +50,13 @@ Scans all 256 VK codes via `GetAsyncKeyState` on a 10 ms timer and prints the he
 |---|---|---|
 | `InpSymbol` | `XAUUSD` | Symbol for all operations |
 | `InpLots` | `0.01` | Lot size per order |
-| `InpBuyKey` | `0x2E` | VK code for Buy key (CE / Delete) |
-| `InpSellKey` | `0x78` | VK code for Sell key (+/- maps to F9 VK) |
-| `InpBEOffsetPts` | `10` | Points above/below entry for Break Even SL |
+| `InpLongKey` | `0x70` | VK code for Long/Buy key (F1) |
+| `InpShortKey` | `0x71` | VK code for Short/Sell key (F2) |
+| `InpBEKey` | `0x79` | VK code for Break Even key (F10 = Fn+0) |
+| `InpBE20Key` | `0x72` | VK code for 20-pip Break Even key (F3) |
+| `InpTrailKey` | `0x74` | VK code for Trailing SL key (F5) |
+| `InpPointsPerPip` | `10` | Points per pip (gold: 10 → 1 pip = 0.10) |
+| `InpBE20Pips` | `20` | Profit locked by 20-pip Break Even (pips) |
+| `InpTrailPips` | `10` | Trailing SL distance from price (pips) |
 | `InpSlippagePoints` | `20` | Max slippage |
 | `InpMagic` | `20260408` | Magic number |
-
-## IPC file names (all in MT5 Common Files\Files\)
-
-| File | Direction | Purpose |
-|---|---|---|
-| `ht_sl_input.ps1` / `ht_sl_result.txt` | EA→PS / PS→EA | SL price input |
-| `ht_toggle_input.ps1` / `ht_toggle_result.txt` | EA→PS / PS→EA | Trading enable toggle |
-| `ht_filter_input.ps1` | EA→PS | Trade filter form script |
-| `ht_filter_result.txt` | PS→EA | Comma-separated protected ticket numbers |
-| `ht_filter_done.txt` | PS→EA | Empty sentinel: window closed |
-| `ht_positions_data.csv` | EA→PS | Live position data (ticket,dir,vol,open,price,pnl) |
