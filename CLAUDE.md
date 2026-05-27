@@ -28,11 +28,16 @@ Numpad 2 → DoSell           (enter short)
 Numpad 0 → DoBreakEven(0)   (SL to entry on all positions)
 Numpad 3 → DoBreakEven(20)  (SL locks +20 pips of profit)
 Numpad 5 → DoTrailingStop   (one-shot: SL to 10 pips from current price)
+Numpad 6 → ShowLotInput     (popup to type the lot size manually)
 ```
 
-The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69), which is what the user's "Fn + keypad number" presses produce. The Fn key itself is processed in keyboard firmware and is invisible to `GetAsyncKeyState`, so only the resulting numpad code is detectable — and only when **NumLock is ON** (NumLock OFF makes the keypad send navigation VKs instead). All five keys are input parameters, so they can be re-pointed from the EA dialog without recompiling.
+The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69), which is what the user's "Fn + keypad number" presses produce. The Fn key itself is processed in keyboard firmware and is invisible to `GetAsyncKeyState`, so only the resulting numpad code is detectable — and only when **NumLock is ON** (NumLock OFF makes the keypad send navigation VKs instead). All six keys are input parameters, so they can be re-pointed from the EA dialog without recompiling.
 
 The EA is always armed — there is no enable/disable gate. Pressing the buy/sell keys sends a market order immediately.
+
+**Active lot size** lives in `g_lots` (seeded from `InpLots`, snapped to broker step/min/max by `NormalizeLot`). Buy/sell use `g_lots`, not `InpLots`.
+
+**Lot-input popup** — `ShowLotInput` writes a WinForms PowerShell script (`ht_lot_input.ps1`) to `Common Files\Files\`, launches it hidden via `ShellExecuteW` (`shell32.dll`), and sets `g_lotPopupOpen`. The top-most dialog (pre-filled with the current lot) writes the typed value to `ht_lot_result.txt`; `CheckLotResult` polls for it, snaps it via `NormalizeLot`, and updates `g_lots`. **While `g_lotPopupOpen` is true, `OnTimer` absorbs all key states and fires nothing** — otherwise the numpad digits the user types into the box (still visible to `GetAsyncKeyState` globally) would trigger trades.
 
 **Edge detection** — every action uses a `g_*Down` bool so it fires only once per keypress, not once per 10 ms tick.
 
@@ -51,14 +56,22 @@ Scans all 256 VK codes via `GetAsyncKeyState` on a 10 ms timer and prints the he
 | Parameter | Default | Notes |
 |---|---|---|
 | `InpSymbol` | `XAUUSD` | Symbol for all operations |
-| `InpLots` | `0.01` | Lot size per order |
+| `InpLots` | `0.01` | Starting lot size (seeds `g_lots`; live value set via Numpad 6) |
 | `InpLongKey` | `0x61` | VK code for Long/Buy key (Numpad 1) |
 | `InpShortKey` | `0x62` | VK code for Short/Sell key (Numpad 2) |
 | `InpBEKey` | `0x60` | VK code for Break Even key (Numpad 0) |
 | `InpBE20Key` | `0x63` | VK code for 20-pip Break Even key (Numpad 3) |
 | `InpTrailKey` | `0x65` | VK code for Trailing SL key (Numpad 5) |
+| `InpLotKey` | `0x66` | VK code for manual lot-size popup key (Numpad 6) |
 | `InpPointsPerPip` | `10` | Points per pip (gold: 10 → 1 pip = 0.10) |
 | `InpBE20Pips` | `20` | Profit locked by 20-pip Break Even (pips) |
 | `InpTrailPips` | `10` | Trailing SL distance from price (pips) |
 | `InpSlippagePoints` | `20` | Max slippage |
 | `InpMagic` | `20260408` | Magic number |
+
+## IPC file names (all in MT5 Common Files\Files\)
+
+| File | Direction | Purpose |
+|---|---|---|
+| `ht_lot_input.ps1` | EA→PS | WinForms lot-input dialog script |
+| `ht_lot_result.txt` | PS→EA | Typed lot size (empty if cancelled) |
