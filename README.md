@@ -188,7 +188,22 @@ Flatten · Half · Break Even · 20-pip BE · Trailing SL · SL тавих
 
 ---
 
-## 9. Алдаа олж засах
+## 9. Оношлогоо
+
+Графикийн самбар дээр EA-ийн **бодитоор харж байгаа** төлөв харагдана:
+
+```
+HotkeyTrader v5     [ ARMED ]
+  !! CANNOT TRADE: Algo Trading is OFF (toolbar button)     ← хаалттай үед л гарна
+Symbol : XAUUSD      Lots : 0.01
+Open   : 6 position(s) on this symbol   Protected : 0
+```
+
+- **`Open : 0`** байхад MT5-ын Trade табд позиц харагдаж байвал → симболын нэр таарахгүй байна. `InpSymbol`-оо брокерын яг бичлэгтэй тааруул (EA одоо үсгийн том жижгийг үл харгалзан таниулдаг болсон; лог дээр `Symbol 'XAUUSD' resolved to the broker's '...'` гэж бичнэ).
+- **`!! CANNOT TRADE: ...`** мөр гарвал шалтгааныг нь шууд бичсэн байна — Algo Trading унтраатай, EA-ийн checkbox тэмдэглэгдээгүй, данс арилжаалах эрхгүй гэх мэт.
+- Захиалга серверт татгалзагдвал `Server REFUSED the request: retcode=... (тайлбар)` гэж Experts табд гарна.
+
+## 10. Алдаа олж засах
 
 | Шинж тэмдэг | Шалтгаан / шийдэл |
 |---|---|
@@ -205,7 +220,7 @@ Flatten · Half · Break Even · 20-pip BE · Trailing SL · SL тавих
 
 ---
 
-## 10. Техникийн товч тайлбар
+## 11. Техникийн товч тайлбар
 
 - `OnTimer()` 10 мс тутам ажиллаж `GetAsyncKeyState`-ээр товчлуурын төлвийг уншина. `OnTick()` зориуд хоосон.
 - Орц ба хаалт — `OrderSendAsync` (хурдан, хариу хүлээхгүй). SL зөөх — `TRADE_ACTION_SLTP`-тэй синхрон `OrderSend`.

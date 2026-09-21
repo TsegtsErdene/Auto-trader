@@ -96,6 +96,11 @@ ulong    g_protected[];
 ulong    g_flattenUntil = 0;
 //--- When the open popup was launched (ms), for the watchdog below
 ulong    g_popupSince   = 0;
+//--- The broker's exact spelling of InpSymbol (see ResolveSymbol)
+string   g_symbol       = "";
+//--- Why the EA currently cannot trade ("" = it can); re-checked once a second
+string   g_blockReason  = "";
+int      g_blockTick    = 0;
 
 //+------------------------------------------------------------------+
 //| Helper – is a virtual key currently held down                    |
@@ -134,11 +139,11 @@ ENUM_ORDER_TYPE_FILLING SymbolFilling(const string sym)
 }
 
 //+------------------------------------------------------------------+
-//| Helper – price value of one pip on InpSymbol                     |
+//| Helper – price value of one pip on g_symbol                     |
 //+------------------------------------------------------------------+
 double PipPrice()
 {
-   return InpPointsPerPip * SymbolInfoDouble(InpSymbol, SYMBOL_POINT);
+   return InpPointsPerPip * SymbolInfoDouble(g_symbol, SYMBOL_POINT);
 }
 
 //+------------------------------------------------------------------+
@@ -146,8 +151,8 @@ double PipPrice()
 //+------------------------------------------------------------------+
 double MinStopDist()
 {
-   long lvl = SymbolInfoInteger(InpSymbol, SYMBOL_TRADE_STOPS_LEVEL);
-   return (double)lvl * SymbolInfoDouble(InpSymbol, SYMBOL_POINT);
+   long lvl = SymbolInfoInteger(g_symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   return (double)lvl * SymbolInfoDouble(g_symbol, SYMBOL_POINT);
 }
 
 //+------------------------------------------------------------------+
@@ -155,7 +160,7 @@ double MinStopDist()
 //+------------------------------------------------------------------+
 int VolumeDigits()
 {
-   double step = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_STEP);
+   double step = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_STEP);
    if(step <= 0.0) return 2;
    int d = 0;
    while(step < 1.0 && d < 8) { step *= 10.0; d++; }
@@ -167,9 +172,9 @@ int VolumeDigits()
 //+------------------------------------------------------------------+
 double NormalizeLot(double v)
 {
-   double step = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_STEP);
-   double minV = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MIN);
-   double maxV = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MAX);
+   double step = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_STEP);
+   double minV = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_MIN);
+   double maxV = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_MAX);
    if(step <= 0.0) step = 0.01;
    v = MathRound(v / step) * step;
    if(v < minV)             v = minV;
@@ -232,12 +237,105 @@ int CollectTickets(ulong &tickets[])
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      if(!SameSymbol(PositionGetString(POSITION_SYMBOL))) continue;
       if(IsProtected(ticket)) continue;
       tickets[count++] = ticket;
    }
    ArrayResize(tickets, count);
    return count;
+}
+
+//+------------------------------------------------------------------+
+//| Find the broker's own spelling of the configured symbol.         |
+//| Brokers differ in case and suffixes ('xauusd', 'XAUUSD.m'), and  |
+//| a position's symbol is compared as text further down, so the     |
+//| exact name matters.                                              |
+//+------------------------------------------------------------------+
+string ResolveSymbol(const string want)
+{
+   int total = SymbolsTotal(false);
+   for(int i = 0; i < total; i++)
+   {
+      string name = SymbolName(i, false);
+      if(StringCompare(name, want, false) == 0) return name;   // case-insensitive
+   }
+   return want;
+}
+
+//+------------------------------------------------------------------+
+//| Does this position belong to the symbol the EA manages?          |
+//| Compared without case sensitivity: a broker that reports         |
+//| 'xauusd' for a position while listing 'XAUUSD' in Market Watch   |
+//| would otherwise make every bulk action silently skip everything. |
+//+------------------------------------------------------------------+
+bool SameSymbol(const string sym)
+{
+   return StringCompare(sym, g_symbol, false) == 0;
+}
+
+//+------------------------------------------------------------------+
+//| Why the EA cannot trade right now ("" when it can).              |
+//| Everything here is outside the EA's control, so it is reported   |
+//| rather than worked around — these are the usual reasons a key    |
+//| press looks like it does nothing.                                |
+//+------------------------------------------------------------------+
+string TradeBlockReason()
+{
+   if(!TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
+      return "Algo Trading is OFF (toolbar button)";
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
+      return "this EA's 'Allow Algo Trading' box is unchecked";
+   if(!AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
+      return "the account cannot trade (investor password?)";
+   if(!AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
+      return "the broker blocks EA trading on this account";
+
+   if(SymbolInfoDouble(g_symbol, SYMBOL_BID) <= 0.0)
+      return StringFormat("no quotes for '%s' - is that the broker's exact symbol name?", g_symbol);
+
+   long mode = SymbolInfoInteger(g_symbol, SYMBOL_TRADE_MODE);
+   if(mode == SYMBOL_TRADE_MODE_DISABLED)  return StringFormat("%s is disabled for trading", g_symbol);
+   if(mode == SYMBOL_TRADE_MODE_CLOSEONLY) return StringFormat("%s is close-only right now", g_symbol);
+
+   return "";
+}
+
+//+------------------------------------------------------------------+
+//| Plain-language hint for the retcodes this EA runs into           |
+//+------------------------------------------------------------------+
+string RetcodeHint(uint code)
+{
+   switch(code)
+   {
+      case 10004: return " (requote)";
+      case 10006: return " (request rejected)";
+      case 10013: return " (invalid request - wrong symbol name?)";
+      case 10014: return " (invalid volume)";
+      case 10015: return " (invalid price)";
+      case 10016: return " (invalid stops - too close to the market?)";
+      case 10017: return " (trading disabled for this account)";
+      case 10018: return " (market is closed)";
+      case 10019: return " (not enough money)";
+      case 10027: return " (algo trading disabled in the terminal)";
+      case 10030: return " (unsupported filling mode)";
+      case 10036: return " (position closed already)";
+   }
+   return "";
+}
+
+//+------------------------------------------------------------------+
+//| How many positions on g_symbol the EA can see                   |
+//+------------------------------------------------------------------+
+int CountPositions()
+{
+   int n = 0;
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0) continue;
+      if(SameSymbol(PositionGetString(POSITION_SYMBOL))) n++;
+   }
+   return n;
 }
 
 //+------------------------------------------------------------------+
@@ -256,8 +354,11 @@ void SetArmed(bool on, const string reason)
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   if(!SymbolSelect(InpSymbol, true))
-      PrintFormat("[HotkeyTrader] WARNING: %s is not in Market Watch", InpSymbol);
+   g_symbol = ResolveSymbol(InpSymbol);
+   if(g_symbol != InpSymbol)
+      PrintFormat("[HotkeyTrader] Symbol '%s' resolved to the broker's '%s'", InpSymbol, g_symbol);
+   if(!SymbolSelect(g_symbol, true))
+      PrintFormat("[HotkeyTrader] WARNING: %s is not in Market Watch", g_symbol);
 
    g_lots  = NormalizeLot(InpLots);
    g_armed = InpStartArmed;
@@ -269,12 +370,16 @@ int OnInit()
    FileDelete(SL_RESULT_FILE,   FILE_COMMON);
    FileDelete(PROT_RESULT_FILE, FILE_COMMON);
 
+   g_blockReason = TradeBlockReason();
+   if(g_blockReason != "")
+      PrintFormat("[HotkeyTrader] *** CANNOT TRADE: %s ***", g_blockReason);
+
    EventSetMillisecondTimer(10);
    UpdateLabel();
    PrintFormat("[HotkeyTrader] Ready | %s | Lots=%s | Entries %s | "
                "Buy=%s Sell=%s BE=%s BE+%d=%s Half=%s Trail=%s Lot=%s SL=%s Protect=%s Flatten=%s Arm=%s | "
                "1 pip = %d points",
-               InpSymbol, DoubleToString(g_lots, VolumeDigits()),
+               g_symbol, DoubleToString(g_lots, VolumeDigits()),
                g_armed ? "ARMED" : "DISARMED",
                KeyName(InpLongKey), KeyName(InpShortKey), KeyName(InpBEKey),
                InpBE20Pips, KeyName(InpBE20Key), KeyName(InpHalfKey), KeyName(InpTrailKey),
@@ -294,6 +399,25 @@ void OnDeinit(const int reason)
 }
 
 void OnTick() {}
+
+//+------------------------------------------------------------------+
+//| OnTradeTransaction – an accepted OrderSendAsync request can still |
+//| be refused by the server; without this the log would only ever    |
+//| say "sent" and the key press would look like it did nothing.      |
+//+------------------------------------------------------------------+
+void OnTradeTransaction(const MqlTradeTransaction &trans,
+                        const MqlTradeRequest    &request,
+                        const MqlTradeResult     &result)
+{
+   if(trans.type != TRADE_TRANSACTION_REQUEST) return;
+
+   if(result.retcode == TRADE_RETCODE_DONE ||
+      result.retcode == TRADE_RETCODE_PLACED ||
+      result.retcode == TRADE_RETCODE_DONE_PARTIAL) return;
+
+   PrintFormat("[HotkeyTrader] Server REFUSED the request: retcode=%u%s  %s",
+               result.retcode, RetcodeHint(result.retcode), result.comment);
+}
 
 //+------------------------------------------------------------------+
 //| OnTimer – global hotkey polling loop (runs every 10 ms)          |
@@ -325,6 +449,21 @@ void OnTimer()
          AbortPopup();
 
       return;
+   }
+
+   //--- Re-check the trading permissions once a second (the user can flip
+   //    the Algo Trading button at any time); log only when it changes.
+   if(++g_blockTick >= 100)
+   {
+      g_blockTick = 0;
+      string reason = TradeBlockReason();
+      if(reason != g_blockReason)
+      {
+         g_blockReason = reason;
+         if(g_blockReason == "") Print("[HotkeyTrader] Trading is possible again");
+         else PrintFormat("[HotkeyTrader] *** CANNOT TRADE: %s ***", g_blockReason);
+         UpdateLabel();
+      }
    }
 
    //--- Flatten confirmation window expired
@@ -436,11 +575,16 @@ void UpdateLabel()
    string state = g_armed ? "ARMED" : "DISARMED";
    if(g_flattenUntil > 0) state += "   >>> FLATTEN: press again to confirm <<<";
 
+   string warn = "";
+   if(g_blockReason != "")
+      warn = "\n  !! CANNOT TRADE: " + g_blockReason;
+
    Comment(StringFormat(
-      "  HotkeyTrader v5     [ %s ]\n"
+      "  HotkeyTrader v5     [ %s ]%s\n"
       "  ─────────────────────────────────────\n"
       "  Symbol : %-10s  Lots : %s\n"
-      "  1 pip  = %d points   Protected : %d position(s)\n"
+      "  Open   : %d position(s) on this symbol   Protected : %d\n"
+      "  1 pip  = %d points\n"
       "  ─────────────────────────────────────\n"
       "  %-7s Buy            %-7s Sell\n"
       "  %-7s Break Even     %-7s BE +%d pips\n"
@@ -448,8 +592,8 @@ void UpdateLabel()
       "  %-7s Set lots       %-7s Set SL price\n"
       "  %-7s Protect        %-7s Flatten (2x)\n"
       "  %-7s Arm / Disarm   (blocks Buy/Sell only)",
-      state, InpSymbol, DoubleToString(g_lots, VolumeDigits()),
-      InpPointsPerPip, ArraySize(g_protected),
+      state, warn, g_symbol, DoubleToString(g_lots, VolumeDigits()),
+      CountPositions(), ArraySize(g_protected), InpPointsPerPip,
       KeyName(InpLongKey), KeyName(InpShortKey),
       KeyName(InpBEKey), KeyName(InpBE20Key), InpBE20Pips,
       KeyName(InpHalfKey), KeyName(InpTrailKey), InpTrailPips,
@@ -466,16 +610,17 @@ void DoBuy()
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
    req.action       = TRADE_ACTION_DEAL;
-   req.symbol       = InpSymbol;
+   req.symbol       = g_symbol;
    req.volume       = g_lots;
    req.type         = ORDER_TYPE_BUY;
-   req.price        = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   req.price        = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
    req.deviation    = InpSlippagePoints;
    req.magic        = InpMagic;
-   req.type_filling = SymbolFilling(InpSymbol);
+   req.type_filling = SymbolFilling(g_symbol);
 
    if(!OrderSendAsync(req, res))
-      PrintFormat("[HotkeyTrader] Buy FAILED retcode=%u", res.retcode);
+      PrintFormat("[HotkeyTrader] Buy FAILED retcode=%u%s error=%d",
+                  res.retcode, RetcodeHint(res.retcode), GetLastError());
    else
    {
       g_lastAction = TimeLocal();
@@ -491,16 +636,17 @@ void DoSell()
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
    req.action       = TRADE_ACTION_DEAL;
-   req.symbol       = InpSymbol;
+   req.symbol       = g_symbol;
    req.volume       = g_lots;
    req.type         = ORDER_TYPE_SELL;
-   req.price        = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
+   req.price        = SymbolInfoDouble(g_symbol, SYMBOL_BID);
    req.deviation    = InpSlippagePoints;
    req.magic        = InpMagic;
-   req.type_filling = SymbolFilling(InpSymbol);
+   req.type_filling = SymbolFilling(g_symbol);
 
    if(!OrderSendAsync(req, res))
-      PrintFormat("[HotkeyTrader] Sell FAILED retcode=%u", res.retcode);
+      PrintFormat("[HotkeyTrader] Sell FAILED retcode=%u%s error=%d",
+                  res.retcode, RetcodeHint(res.retcode), GetLastError());
    else
    {
       g_lastAction = TimeLocal();
@@ -520,9 +666,9 @@ void DoBreakEven(double lockPips)
 {
    double pip      = PipPrice();
    double stopDist = MinStopDist();
-   int    digits   = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
-   double bid      = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
-   double ask      = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   int    digits   = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
+   double bid      = SymbolInfoDouble(g_symbol, SYMBOL_BID);
+   double ask      = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
 
    int moved = 0, skipped = 0;
 
@@ -530,7 +676,7 @@ void DoBreakEven(double lockPips)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      if(!SameSymbol(PositionGetString(POSITION_SYMBOL))) continue;
       if(IsProtected(ticket)) { skipped++; continue; }
 
       ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
@@ -556,13 +702,14 @@ void DoBreakEven(double lockPips)
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
       req.action   = TRADE_ACTION_SLTP;
-      req.symbol   = InpSymbol;
+      req.symbol   = g_symbol;
       req.position = ticket;
       req.sl       = target;
       req.tp       = tp;
 
       if(OrderSend(req, res)) moved++;
-      else PrintFormat("[HotkeyTrader] BE FAILED ticket=%I64u retcode=%u", ticket, res.retcode);
+      else PrintFormat("[HotkeyTrader] BE FAILED ticket=%I64u retcode=%u%s",
+                       ticket, res.retcode, RetcodeHint(res.retcode));
    }
 
    PrintFormat("[HotkeyTrader] %s: %d moved, %d skipped",
@@ -577,9 +724,9 @@ void DoTrailingStop()
 {
    double pip      = PipPrice();
    double stopDist = MinStopDist();
-   int    digits   = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
-   double bid      = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
-   double ask      = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   int    digits   = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
+   double bid      = SymbolInfoDouble(g_symbol, SYMBOL_BID);
+   double ask      = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
 
    int moved = 0, skipped = 0;
 
@@ -587,7 +734,7 @@ void DoTrailingStop()
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      if(!SameSymbol(PositionGetString(POSITION_SYMBOL))) continue;
       if(IsProtected(ticket)) { skipped++; continue; }
 
       ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
@@ -611,13 +758,14 @@ void DoTrailingStop()
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
       req.action   = TRADE_ACTION_SLTP;
-      req.symbol   = InpSymbol;
+      req.symbol   = g_symbol;
       req.position = ticket;
       req.sl       = newSL;
       req.tp       = tp;
 
       if(OrderSend(req, res)) moved++;
-      else PrintFormat("[HotkeyTrader] Trail FAILED ticket=%I64u retcode=%u", ticket, res.retcode);
+      else PrintFormat("[HotkeyTrader] Trail FAILED ticket=%I64u retcode=%u%s",
+                       ticket, res.retcode, RetcodeHint(res.retcode));
    }
 
    PrintFormat("[HotkeyTrader] Trailing SL: %d moved, %d skipped", moved, skipped);
@@ -635,26 +783,27 @@ bool ClosePart(ulong ticket, double volume)
    MqlTradeRequest req = {};
    MqlTradeResult  res = {};
    req.action       = TRADE_ACTION_DEAL;
-   req.symbol       = InpSymbol;
+   req.symbol       = g_symbol;
    req.volume       = volume;
    req.type         = (ptype == POSITION_TYPE_BUY) ? ORDER_TYPE_SELL : ORDER_TYPE_BUY;
    req.price        = (ptype == POSITION_TYPE_BUY)
-                      ? SymbolInfoDouble(InpSymbol, SYMBOL_BID)
-                      : SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+                      ? SymbolInfoDouble(g_symbol, SYMBOL_BID)
+                      : SymbolInfoDouble(g_symbol, SYMBOL_ASK);
    req.deviation    = InpSlippagePoints;
    req.position     = ticket;
    req.magic        = InpMagic;
-   req.type_filling = SymbolFilling(InpSymbol);
+   req.type_filling = SymbolFilling(g_symbol);
 
    if(OrderSendAsync(req, res)) return true;
 
-   PrintFormat("[HotkeyTrader] Close FAILED ticket=%I64u vol=%s retcode=%u",
-               ticket, DoubleToString(volume, VolumeDigits()), res.retcode);
+   PrintFormat("[HotkeyTrader] Close FAILED ticket=%I64u vol=%s retcode=%u%s",
+               ticket, DoubleToString(volume, VolumeDigits()), res.retcode,
+               RetcodeHint(res.retcode));
    return false;
 }
 
 //+------------------------------------------------------------------+
-//| Flatten – close every position on InpSymbol except protected     |
+//| Flatten – close every position on g_symbol except protected     |
 //+------------------------------------------------------------------+
 void DoFlatten()
 {
@@ -662,7 +811,7 @@ void DoFlatten()
    int count = CollectTickets(tickets);
    if(count == 0)
    {
-      Print("[HotkeyTrader] Flatten: nothing to close on ", InpSymbol);
+      Print("[HotkeyTrader] Flatten: nothing to close on ", g_symbol);
       return;
    }
 
@@ -678,7 +827,7 @@ void DoFlatten()
 }
 
 //+------------------------------------------------------------------+
-//| Half – close half the VOLUME of each position on InpSymbol.      |
+//| Half – close half the VOLUME of each position on g_symbol.      |
 //| A position is skipped when half of it, or the remainder, would   |
 //| fall below the broker's minimum lot.                             |
 //+------------------------------------------------------------------+
@@ -688,12 +837,12 @@ void DoHalf()
    int count = CollectTickets(tickets);
    if(count == 0)
    {
-      Print("[HotkeyTrader] Half: nothing to close on ", InpSymbol);
+      Print("[HotkeyTrader] Half: nothing to close on ", g_symbol);
       return;
    }
 
-   double step = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_STEP);
-   double minV = SymbolInfoDouble(InpSymbol, SYMBOL_VOLUME_MIN);
+   double step = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_STEP);
+   double minV = SymbolInfoDouble(g_symbol, SYMBOL_VOLUME_MIN);
    if(step <= 0.0) step = 0.01;
    int digits = VolumeDigits();
 
@@ -714,16 +863,16 @@ void DoHalf()
 }
 
 //+------------------------------------------------------------------+
-//| Apply one SL price to every position on InpSymbol.               |
+//| Apply one SL price to every position on g_symbol.               |
 //| Rejects a price on the wrong side of the market or inside the    |
 //| broker's minimum stop distance, so nothing is sent blindly.      |
 //+------------------------------------------------------------------+
 void ApplySLToAll(double slPrice)
 {
    double stopDist = MinStopDist();
-   int    digits   = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
-   double bid      = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
-   double ask      = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   int    digits   = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
+   double bid      = SymbolInfoDouble(g_symbol, SYMBOL_BID);
+   double ask      = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
    double sl       = NormalizeDouble(slPrice, digits);
 
    int moved = 0, skipped = 0;
@@ -732,7 +881,7 @@ void ApplySLToAll(double slPrice)
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      if(!SameSymbol(PositionGetString(POSITION_SYMBOL))) continue;
       if(IsProtected(ticket)) { skipped++; continue; }
 
       ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
@@ -759,13 +908,14 @@ void ApplySLToAll(double slPrice)
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
       req.action   = TRADE_ACTION_SLTP;
-      req.symbol   = InpSymbol;
+      req.symbol   = g_symbol;
       req.position = ticket;
       req.sl       = sl;
       req.tp       = PositionGetDouble(POSITION_TP);
 
       if(OrderSend(req, res)) moved++;
-      else PrintFormat("[HotkeyTrader] Set SL FAILED ticket=%I64u retcode=%u", ticket, res.retcode);
+      else PrintFormat("[HotkeyTrader] Set SL FAILED ticket=%I64u retcode=%u%s",
+                       ticket, res.retcode, RetcodeHint(res.retcode));
    }
 
    PrintFormat("[HotkeyTrader] Set SL %s: %d moved, %d skipped",
@@ -871,13 +1021,13 @@ void ShowSLInput()
 {
    FileDelete(SL_RESULT_FILE, FILE_COMMON);
 
-   int    digits = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
-   double bid    = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
-   double ask    = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   int    digits = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
+   double bid    = SymbolInfoDouble(g_symbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
 
    //--- Deliberately no preset: the market price itself is never a valid
    //    stop, so pre-filling it would make every position get rejected.
-   string prompt = StringFormat("%s SL price   (bid %s / ask %s)", InpSymbol,
+   string prompt = StringFormat("%s SL price   (bid %s / ask %s)", g_symbol,
                                 DoubleToString(bid, digits), DoubleToString(ask, digits));
 
    if(!WriteInputDialog(SL_SCRIPT_FILE, SL_RESULT_FILE, "Stop Loss", prompt, ""))
@@ -896,9 +1046,9 @@ void ShowProtectInput()
 {
    FileDelete(PROT_RESULT_FILE, FILE_COMMON);
 
-   int    digits = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
-   double bid    = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
-   double ask    = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
+   int    digits = (int)SymbolInfoInteger(g_symbol, SYMBOL_DIGITS);
+   double bid    = SymbolInfoDouble(g_symbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(g_symbol, SYMBOL_ASK);
    string resFull = CommonFilesPath() + PROT_RESULT_FILE;
 
    int h = FileOpen(PROT_SCRIPT_FILE, FILE_WRITE | FILE_TXT | FILE_ANSI | FILE_COMMON);
@@ -939,7 +1089,7 @@ void ShowProtectInput()
    {
       ulong ticket = PositionGetTicket(i);
       if(ticket == 0) continue;
-      if(PositionGetString(POSITION_SYMBOL) != InpSymbol) continue;
+      if(!SameSymbol(PositionGetString(POSITION_SYMBOL))) continue;
 
       bool   isBuy  = (PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY);
       double vol    = PositionGetDouble(POSITION_VOLUME);
@@ -985,7 +1135,7 @@ void ShowProtectInput()
    if(listed == 0)
    {
       FileDelete(PROT_SCRIPT_FILE, FILE_COMMON);
-      Print("[HotkeyTrader] Protect: no open positions on ", InpSymbol);
+      Print("[HotkeyTrader] Protect: no open positions on ", g_symbol);
       return;
    }
 
