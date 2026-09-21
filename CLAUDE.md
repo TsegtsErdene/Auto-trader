@@ -46,7 +46,7 @@ The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69, `VK_DECI
 
 **Active lot size** lives in `g_lots` (seeded from `InpLots`, snapped to broker step/min/max by `NormalizeLot`). Buy/sell use `g_lots`, not `InpLots`.
 
-**Popups** — three WinForms dialogs are driven the same way: write a PowerShell script into `Common Files\Files\`, launch it hidden with `ShellExecuteW` (`shell32.dll`), set `g_popup`, then poll for a result file. `WriteInputDialog()` generates the two single-field dialogs (lot, SL); the protect dialog is a checkbox `ListView` built from a snapshot of the open positions. Every dialog writes a result on **Cancel** too (empty line, or `CANCEL`), so the EA can never be left stuck in the popup state. **While `g_popup != POPUP_NONE`, `OnTimer` absorbs all key states and fires nothing** — otherwise the numpad digits the user types into the box (still visible to `GetAsyncKeyState` globally) would trigger trades.
+**Popups** — three WinForms dialogs are driven the same way: write a PowerShell script into `Common Files\Files\`, launch it hidden with `ShellExecuteW` (`shell32.dll`), set `g_popup`, then poll for a result file. `WriteInputDialog()` generates the two single-field dialogs (lot, SL); the protect dialog is a checkbox `ListView` built from a snapshot of the open positions. Every dialog writes a result on **Cancel** too (empty line, or `CANCEL`), so a cancelled dialog still releases the EA. If PowerShell dies without writing anything, `AbortPopup()` releases the hotkeys after `InpPopupTimeoutSec` — without that watchdog a killed dialog would silently disable every key, flatten included. **While `g_popup != POPUP_NONE`, `OnTimer` absorbs all key states and fires nothing** — otherwise the numpad digits the user types into the box (still visible to `GetAsyncKeyState` globally) would trigger trades.
 
 **Edge detection** — every action uses a `g_*Down` bool so it fires only once per keypress, not once per 10 ms tick.
 
@@ -83,6 +83,7 @@ Scans all 256 VK codes via `GetAsyncKeyState` on a 10 ms timer and prints the he
 | `InpStartArmed` | `false` | Whether entries are allowed at load time |
 | `InpAutoDisarmMin` | `30` | Idle minutes before the gate closes itself (0 = never) |
 | `InpFlattenConfirmSec` | `3` | Seconds allowed for the second Flatten press (0 = no confirm) |
+| `InpPopupTimeoutSec` | `120` | Seconds before an unanswered popup is abandoned (0 = wait forever) |
 | `InpSlippagePoints` | `20` | Max slippage |
 | `InpMagic` | `20260408` | Magic number |
 

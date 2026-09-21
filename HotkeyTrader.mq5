@@ -65,6 +65,7 @@ input int    InpTrailPips       = 10;       // Trailing SL distance from price (
 input bool   InpStartArmed      = false;    // Start armed (false = entries blocked until Numpad .)
 input int    InpAutoDisarmMin   = 30;       // Auto-disarm after N idle minutes (0 = never)
 input int    InpFlattenConfirmSec = 3;      // Flatten needs a 2nd press within N sec (0 = no confirm)
+input int    InpPopupTimeoutSec = 120;      // Give up on a popup after N sec (0 = wait forever)
 input ulong  InpMagic           = 20260408; // EA magic number
 input uint   InpSlippagePoints  = 20;       // Max slippage in points
 
@@ -93,6 +94,8 @@ datetime g_lastAction = 0;
 ulong    g_protected[];
 //--- Deadline (ms) for the second Flatten press; 0 = not waiting
 ulong    g_flattenUntil = 0;
+//--- When the open popup was launched (ms), for the watchdog below
+ulong    g_popupSince   = 0;
 
 //+------------------------------------------------------------------+
 //| Helper – is a virtual key currently held down                    |
@@ -300,6 +303,13 @@ void OnTimer()
       g_flatDown  = KeyDown(InpFlattenKey);
       g_armDown   = KeyDown(InpArmKey);
       CheckPopupResult();
+
+      //--- Watchdog: a popup whose PowerShell died would otherwise keep
+      //    every hotkey absorbed forever, including Flatten.
+      if(g_popup != POPUP_NONE && InpPopupTimeoutSec > 0 &&
+         GetTickCount64() - g_popupSince > (ulong)InpPopupTimeoutSec * 1000)
+         AbortPopup();
+
       return;
    }
 
@@ -820,7 +830,7 @@ void ShowLotInput()
       return;
    if(!LaunchScript(LOT_SCRIPT_FILE)) return;
 
-   g_popup = POPUP_LOT;
+   OpenPopup(POPUP_LOT);
    Print("[HotkeyTrader] Lot input popup opened");
 }
 
@@ -839,7 +849,7 @@ void ShowSLInput()
       return;
    if(!LaunchScript(SL_SCRIPT_FILE)) return;
 
-   g_popup = POPUP_SL;
+   OpenPopup(POPUP_SL);
    Print("[HotkeyTrader] SL input popup opened");
 }
 
@@ -946,7 +956,7 @@ void ShowProtectInput()
 
    if(!LaunchScript(PROT_SCRIPT_FILE)) return;
 
-   g_popup = POPUP_PROTECT;
+   OpenPopup(POPUP_PROTECT);
    PrintFormat("[HotkeyTrader] Protect popup opened (%d position(s))", listed);
 }
 
@@ -1019,6 +1029,42 @@ void ApplyProtectResult(const string txt)
    }
 
    PrintFormat("[HotkeyTrader] Protected: %d position(s)", ArraySize(g_protected));
+}
+
+//+------------------------------------------------------------------+
+//| Enter the popup state (hotkeys absorbed until it answers)        |
+//+------------------------------------------------------------------+
+void OpenPopup(int kind)
+{
+   g_popup      = kind;
+   g_popupSince = GetTickCount64();
+}
+
+//+------------------------------------------------------------------+
+//| Give up on a popup that never answered and release the hotkeys   |
+//+------------------------------------------------------------------+
+void AbortPopup()
+{
+   switch(g_popup)
+   {
+      case POPUP_LOT:
+         FileDelete(LOT_SCRIPT_FILE,  FILE_COMMON);
+         FileDelete(LOT_RESULT_FILE,  FILE_COMMON);
+         break;
+      case POPUP_SL:
+         FileDelete(SL_SCRIPT_FILE,   FILE_COMMON);
+         FileDelete(SL_RESULT_FILE,   FILE_COMMON);
+         break;
+      case POPUP_PROTECT:
+         FileDelete(PROT_SCRIPT_FILE, FILE_COMMON);
+         FileDelete(PROT_RESULT_FILE, FILE_COMMON);
+         break;
+   }
+
+   g_popup = POPUP_NONE;
+   PrintFormat("[HotkeyTrader] Popup gave no answer in %d s — hotkeys released, "
+               "nothing changed", InpPopupTimeoutSec);
+   UpdateLabel();
 }
 
 //+------------------------------------------------------------------+
