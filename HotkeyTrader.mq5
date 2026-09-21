@@ -133,8 +133,15 @@ string KeyName(int vk)
 ENUM_ORDER_TYPE_FILLING SymbolFilling(const string sym)
 {
    uint filling = (uint)SymbolInfoInteger(sym, SYMBOL_FILLING_MODE);
-   if((filling & SYMBOL_FILLING_IOC) != 0) return ORDER_FILLING_IOC;
    if((filling & SYMBOL_FILLING_FOK) != 0) return ORDER_FILLING_FOK;
+   if((filling & SYMBOL_FILLING_IOC) != 0) return ORDER_FILLING_IOC;
+
+   //--- Nothing advertised. Market/exchange execution refuses RETURN
+   //    (retcode 10030), so IOC is the only sane guess there.
+   long exec = SymbolInfoInteger(sym, SYMBOL_TRADE_EXEMODE);
+   if(exec == SYMBOL_TRADE_EXECUTION_MARKET || exec == SYMBOL_TRADE_EXECUTION_EXCHANGE)
+      return ORDER_FILLING_IOC;
+
    return ORDER_FILLING_RETURN;
 }
 
@@ -370,6 +377,9 @@ int OnInit()
    FileDelete(SL_RESULT_FILE,   FILE_COMMON);
    FileDelete(PROT_RESULT_FILE, FILE_COMMON);
 
+   PrintFormat("[HotkeyTrader] Running %s, compiled %s", __FILE__,
+               TimeToString(__DATETIME__, TIME_DATE | TIME_MINUTES));
+
    g_blockReason = TradeBlockReason();
    if(g_blockReason != "")
       PrintFormat("[HotkeyTrader] *** CANNOT TRADE: %s ***", g_blockReason);
@@ -580,7 +590,7 @@ void UpdateLabel()
       warn = "\n  !! CANNOT TRADE: " + g_blockReason;
 
    Comment(StringFormat(
-      "  HotkeyTrader v5     [ %s ]%s\n"
+      "  HotkeyTrader v5   build %s   [ %s ]%s\n"
       "  ─────────────────────────────────────\n"
       "  Symbol : %-10s  Lots : %s\n"
       "  Open   : %d position(s) on this symbol   Protected : %d\n"
@@ -592,7 +602,8 @@ void UpdateLabel()
       "  %-7s Set lots       %-7s Set SL price\n"
       "  %-7s Protect        %-7s Flatten (2x)\n"
       "  %-7s Arm / Disarm   (blocks Buy/Sell only)",
-      state, warn, g_symbol, DoubleToString(g_lots, VolumeDigits()),
+      TimeToString(__DATETIME__, TIME_DATE | TIME_MINUTES), state, warn,
+      g_symbol, DoubleToString(g_lots, VolumeDigits()),
       CountPositions(), ArraySize(g_protected), InpPointsPerPip,
       KeyName(InpLongKey), KeyName(InpShortKey),
       KeyName(InpBEKey), KeyName(InpBE20Key), InpBE20Pips,

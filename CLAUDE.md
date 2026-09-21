@@ -46,6 +46,8 @@ The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69, `VK_DECI
 
 **Symbol matching** — `ResolveSymbol()` turns `InpSymbol` into the broker's own spelling at startup (case and suffix differences: `xauusd`, `XAUUSD.m`) and everything downstream uses that `g_symbol`. Position filters go through `SameSymbol()`, which compares **without case sensitivity**: a terminal that reports `xauusd` for a position while listing `XAUUSD` in Market Watch would otherwise make every bulk action skip every position silently.
 
+**Which build is running** — `OnInit` logs `__FILE__` and `__DATETIME__`, and the chart label carries the compile time. MT5 runs the compiled `.ex5`, and a terminal can hold several copies of the EA in different Navigator folders, so "I recompiled" and "the chart runs that build" are separate facts; the stamp makes the second one checkable.
+
 **Self-diagnosis** — `TradeBlockReason()` names the reason the EA cannot trade (algo trading off, the EA's own checkbox, account restrictions, no quotes, symbol disabled or close-only). It runs at init, is re-checked once a second in `OnTimer`, is logged when it changes, and shows on the chart label. `RetcodeHint()` turns the retcodes this EA hits into plain language, and `OnTradeTransaction` reports requests the server refuses — an `OrderSendAsync` that returns `true` has only left the terminal, so without it a refused entry would log `sent` and look like nothing happened. The label also shows how many positions the EA can actually see on its symbol, which is what exposes a symbol mismatch.
 
 **Active lot size** lives in `g_lots` (seeded from `InpLots`, snapped to broker step/min/max by `NormalizeLot`). Buy/sell use `g_lots`, not `InpLots`.
@@ -56,7 +58,7 @@ The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69, `VK_DECI
 
 **Pips vs points** — `InpPointsPerPip` (default 10) converts pips to price: `pip = InpPointsPerPip × SYMBOL_POINT`. On a 2-digit gold quote that makes 1 pip = 0.10. `PipPrice()` and `MinStopDist()` (broker `SYMBOL_TRADE_STOPS_LEVEL`) centralize the math.
 
-**Order dispatch** — entries and closes use `OrderSendAsync` (fire-and-forget); stop moves use synchronous `OrderSend` with `TRADE_ACTION_SLTP`. `ClosePart()` is the single close path for both flatten and half. `SymbolFilling()` auto-selects IOC/FOK/Return based on `SYMBOL_FILLING_MODE`.
+**Order dispatch** — entries and closes use `OrderSendAsync` (fire-and-forget); stop moves use synchronous `OrderSend` with `TRADE_ACTION_SLTP`. `ClosePart()` is the single close path for both flatten and half. `SymbolFilling()` picks whichever mode the symbol advertises in `SYMBOL_FILLING_MODE` (FOK first, then IOC); when it advertises none, market and exchange execution get IOC rather than RETURN, which such brokers refuse with retcode 10030.
 
 **Stop-move safety** — `DoBreakEven` and `DoTrailingStop` only ever *tighten* the stop (never widen risk) and skip any position where the target stop is closer to market than the broker's minimum stop distance. `ApplySLToAll` applies the same distance check and additionally rejects a price on the wrong side of the market, so a typo cannot be sent blindly — and logs, per position, the price the broker would accept. The SL dialog deliberately opens empty (a preset at market price would be rejected for every position) and shows bid/ask in its prompt instead. `ParseTypedNumber()` reads both `.` and `,` decimal separators. `DoHalf` skips a position when half of it — or what would remain — falls below `SYMBOL_VOLUME_MIN`.
 

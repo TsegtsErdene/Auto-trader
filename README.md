@@ -193,7 +193,7 @@ Flatten · Half · Break Even · 20-pip BE · Trailing SL · SL тавих
 Графикийн самбар дээр EA-ийн **бодитоор харж байгаа** төлөв харагдана:
 
 ```
-HotkeyTrader v5     [ ARMED ]
+HotkeyTrader v5   build 2026.09.21 15:30   [ ARMED ]
   !! CANNOT TRADE: Algo Trading is OFF (toolbar button)     ← хаалттай үед л гарна
 Symbol : XAUUSD      Lots : 0.01
 Open   : 6 position(s) on this symbol   Protected : 0
@@ -202,6 +202,7 @@ Open   : 6 position(s) on this symbol   Protected : 0
 - **`Open : 0`** байхад MT5-ын Trade табд позиц харагдаж байвал → симболын нэр таарахгүй байна. `InpSymbol`-оо брокерын яг бичлэгтэй тааруул (EA одоо үсгийн том жижгийг үл харгалзан таниулдаг болсон; лог дээр `Symbol 'XAUUSD' resolved to the broker's '...'` гэж бичнэ).
 - **`!! CANNOT TRADE: ...`** мөр гарвал шалтгааныг нь шууд бичсэн байна — Algo Trading унтраатай, EA-ийн checkbox тэмдэглэгдээгүй, данс арилжаалах эрхгүй гэх мэт.
 - Захиалга серверт татгалзагдвал `Server REFUSED the request: retcode=... (тайлбар)` гэж Experts табд гарна.
+- **`build ...`** нь тухайн EA хэзээ эмхэтгэгдсэнийг харуулна. Эмхэтгэсэн ч энэ цаг өөрчлөгдөөгүй бол график дээр **өөр хуулбар** ажиллаж байна (Navigator дотор хэд хэдэн фолдерт HotkeyTrader байж болно). Эхлэхдээ Experts табд `Running <файлын зам>, compiled ...` гэж бүтэн замыг бичнэ.
 
 ## 10. Алдаа олж засах
 
