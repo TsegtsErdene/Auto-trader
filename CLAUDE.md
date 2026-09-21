@@ -54,7 +54,7 @@ The keys are the numeric-keypad VK codes (`VK_NUMPAD0`-`9` = 0x60-0x69, `VK_DECI
 
 **Order dispatch** — entries and closes use `OrderSendAsync` (fire-and-forget); stop moves use synchronous `OrderSend` with `TRADE_ACTION_SLTP`. `ClosePart()` is the single close path for both flatten and half. `SymbolFilling()` auto-selects IOC/FOK/Return based on `SYMBOL_FILLING_MODE`.
 
-**Stop-move safety** — `DoBreakEven` and `DoTrailingStop` only ever *tighten* the stop (never widen risk) and skip any position where the target stop is closer to market than the broker's minimum stop distance. `ApplySLToAll` applies the same distance check and additionally rejects a price on the wrong side of the market, so a typo cannot be sent blindly. `DoHalf` skips a position when half of it — or what would remain — falls below `SYMBOL_VOLUME_MIN`.
+**Stop-move safety** — `DoBreakEven` and `DoTrailingStop` only ever *tighten* the stop (never widen risk) and skip any position where the target stop is closer to market than the broker's minimum stop distance. `ApplySLToAll` applies the same distance check and additionally rejects a price on the wrong side of the market, so a typo cannot be sent blindly — and logs, per position, the price the broker would accept. The SL dialog deliberately opens empty (a preset at market price would be rejected for every position) and shows bid/ask in its prompt instead. `ParseTypedNumber()` reads both `.` and `,` decimal separators. `DoHalf` skips a position when half of it — or what would remain — falls below `SYMBOL_VOLUME_MIN`.
 
 ### KeyDetector.mq5 — utility EA
 

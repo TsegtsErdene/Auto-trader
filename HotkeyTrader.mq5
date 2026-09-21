@@ -178,6 +178,20 @@ double NormalizeLot(double v)
 }
 
 //+------------------------------------------------------------------+
+//| Helper – read a number typed by the user. Windows locales that   |
+//| use a comma decimal separator would otherwise truncate the value |
+//| ("3325,40" -> 3325).                                             |
+//+------------------------------------------------------------------+
+double ParseTypedNumber(const string text)
+{
+   string t = text;
+   StringTrimLeft(t);
+   StringTrimRight(t);
+   StringReplace(t, ",", ".");
+   return StringToDouble(t);
+}
+
+//+------------------------------------------------------------------+
 //| Helper – is this ticket protected from bulk actions              |
 //+------------------------------------------------------------------+
 bool IsProtected(ulong ticket)
@@ -723,8 +737,24 @@ void ApplySLToAll(double slPrice)
 
       ENUM_POSITION_TYPE ptype = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
 
-      if(ptype == POSITION_TYPE_BUY  && sl >= bid - stopDist) { skipped++; continue; }
-      if(ptype == POSITION_TYPE_SELL && sl <= ask + stopDist) { skipped++; continue; }
+      if(ptype == POSITION_TYPE_BUY && sl >= bid - stopDist)
+      {
+         skipped++;
+         PrintFormat("[HotkeyTrader] Set SL skipped ticket=%I64u: a BUY needs its SL below %s "
+                     "(bid %s, broker min distance %s)", ticket,
+                     DoubleToString(bid - stopDist, digits), DoubleToString(bid, digits),
+                     DoubleToString(stopDist, digits));
+         continue;
+      }
+      if(ptype == POSITION_TYPE_SELL && sl <= ask + stopDist)
+      {
+         skipped++;
+         PrintFormat("[HotkeyTrader] Set SL skipped ticket=%I64u: a SELL needs its SL above %s "
+                     "(ask %s, broker min distance %s)", ticket,
+                     DoubleToString(ask + stopDist, digits), DoubleToString(ask, digits),
+                     DoubleToString(stopDist, digits));
+         continue;
+      }
 
       MqlTradeRequest req = {};
       MqlTradeResult  res = {};
@@ -779,7 +809,7 @@ bool WriteInputDialog(const string scriptFile, const string resultFile,
    FileWrite(h, "Add-Type -AssemblyName System.Drawing");
    FileWrite(h, "$f = New-Object System.Windows.Forms.Form");
    FileWrite(h, "$f.Text = '" + PsQuote(title) + "'");
-   FileWrite(h, "$f.Size = New-Object System.Drawing.Size(280,150)");
+   FileWrite(h, "$f.Size = New-Object System.Drawing.Size(360,150)");
    FileWrite(h, "$f.StartPosition = 'CenterScreen'");
    FileWrite(h, "$f.TopMost = $true");
    FileWrite(h, "$f.FormBorderStyle = 'FixedDialog'");
@@ -792,18 +822,18 @@ bool WriteInputDialog(const string scriptFile, const string resultFile,
    FileWrite(h, "$f.Controls.Add($l)");
    FileWrite(h, "$t = New-Object System.Windows.Forms.TextBox");
    FileWrite(h, "$t.Location = New-Object System.Drawing.Point(12,38)");
-   FileWrite(h, "$t.Size = New-Object System.Drawing.Size(248,22)");
+   FileWrite(h, "$t.Size = New-Object System.Drawing.Size(328,22)");
    FileWrite(h, "$t.Text = '" + PsQuote(preset) + "'");
    FileWrite(h, "$f.Controls.Add($t)");
    FileWrite(h, "$ok = New-Object System.Windows.Forms.Button");
    FileWrite(h, "$ok.Text = 'OK'");
-   FileWrite(h, "$ok.Location = New-Object System.Drawing.Point(104,75)");
+   FileWrite(h, "$ok.Location = New-Object System.Drawing.Point(184,75)");
    FileWrite(h, "$ok.DialogResult = [System.Windows.Forms.DialogResult]::OK");
    FileWrite(h, "$f.Controls.Add($ok)");
    FileWrite(h, "$f.AcceptButton = $ok");
    FileWrite(h, "$c = New-Object System.Windows.Forms.Button");
    FileWrite(h, "$c.Text = 'Cancel'");
-   FileWrite(h, "$c.Location = New-Object System.Drawing.Point(185,75)");
+   FileWrite(h, "$c.Location = New-Object System.Drawing.Point(265,75)");
    FileWrite(h, "$c.DialogResult = [System.Windows.Forms.DialogResult]::Cancel");
    FileWrite(h, "$f.Controls.Add($c)");
    FileWrite(h, "$f.CancelButton = $c");
@@ -843,9 +873,14 @@ void ShowSLInput()
 
    int    digits = (int)SymbolInfoInteger(InpSymbol, SYMBOL_DIGITS);
    double bid    = SymbolInfoDouble(InpSymbol, SYMBOL_BID);
+   double ask    = SymbolInfoDouble(InpSymbol, SYMBOL_ASK);
 
-   if(!WriteInputDialog(SL_SCRIPT_FILE, SL_RESULT_FILE, "Stop Loss",
-                        "SL price for " + InpSymbol + ":", DoubleToString(bid, digits)))
+   //--- Deliberately no preset: the market price itself is never a valid
+   //    stop, so pre-filling it would make every position get rejected.
+   string prompt = StringFormat("%s SL price   (bid %s / ask %s)", InpSymbol,
+                                DoubleToString(bid, digits), DoubleToString(ask, digits));
+
+   if(!WriteInputDialog(SL_SCRIPT_FILE, SL_RESULT_FILE, "Stop Loss", prompt, ""))
       return;
    if(!LaunchScript(SL_SCRIPT_FILE)) return;
 
@@ -987,7 +1022,7 @@ bool ReadResultFile(const string file, string &out)
 //+------------------------------------------------------------------+
 void ApplyLotResult(const string txt)
 {
-   double v = StringToDouble(txt);
+   double v = ParseTypedNumber(txt);
    if(v > 0.0)
    {
       g_lots = NormalizeLot(v);
@@ -1088,7 +1123,7 @@ void CheckPopupResult()
          if(!ReadResultFile(SL_RESULT_FILE, txt)) return;
          FileDelete(SL_SCRIPT_FILE, FILE_COMMON);
          g_popup = POPUP_NONE;
-         double sl = StringToDouble(txt);
+         double sl = ParseTypedNumber(txt);
          if(sl > 0.0) ApplySLToAll(sl);
          else         Print("[HotkeyTrader] Set SL cancelled");
          break;
