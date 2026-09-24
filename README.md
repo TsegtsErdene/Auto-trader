@@ -1,232 +1,106 @@
-# HotkeyTrader — Гарын авлага
+# HotkeyTrader for MetaTrader 5
 
-MetaTrader 5 дээр **гарын товчлуураар** (numpad) арилжаа хийдэг Expert Advisor (EA). Стратеги, автомат шийдвэр байхгүй — энэ бол гараар арилжаалагчийн хурдыг нэмэх хэрэгсэл.
+HotkeyTrader is a focused MetaTrader 5 Expert Advisor for **manual traders who want faster keyboard-driven execution and position management**.
 
-- `HotkeyTrader.mq5` — үндсэн EA (v5.00)
-- `KeyDetector.mq5` — товчлуурын VK код олох туслах EA (нэг удаа хэрэглээд орхино)
+It does **not** generate trading signals or make strategy decisions for you. It gives you configurable numpad hotkeys for entering trades, moving stops, taking partials, protecting selected positions, and flattening positions quickly.
 
----
+> Windows only. The EA uses Windows APIs and PowerShell for global hotkeys and small input dialogs.
 
-## 1. Шаардлага
+## Highlights
 
-| Зүйл | Тайлбар |
+- Global numpad hotkeys for long / short entries
+- Arm / disarm protection for new entries
+- Break-even and profit-lock stop management
+- One-tap partial close
+- One-shot trailing stop adjustment
+- Protected positions that bulk actions skip
+- Two-step confirmation before flattening positions
+- Configurable symbol, lot size, hotkeys, pip size, slippage and timeouts
+- Diagnostics panel and detailed Experts-tab logging
+- No external trading service or signal dependency
+
+## Files
+
+- `HotkeyTrader.mq5` — main Expert Advisor
+- `KeyDetector.mq5` — helper EA for discovering Windows virtual-key codes
+- `docs/README.mn.md` — detailed Mongolian user guide
+- `CONTRIBUTING.md` — how to contribute
+- `SECURITY.md` — security reporting guidance
+
+## Requirements
+
+- MetaTrader 5 on Windows
+- MetaEditor
+- DLL imports enabled for the EA
+- PowerShell available for the optional popup dialogs
+- NumLock enabled
+
+## Quick start
+
+1. Copy `HotkeyTrader.mq5` and `KeyDetector.mq5` into your MT5 `MQL5/Experts/` folder.
+2. Open the files in MetaEditor and compile with **F7**.
+3. In MT5, refresh the Navigator and attach `HotkeyTrader` to a chart.
+4. Enable **Algo Trading** and **Allow DLL imports**.
+5. Configure `InpSymbol`, lot size and pip settings for your broker.
+6. Test every hotkey on a **demo account** before considering live use.
+
+## Default hotkeys
+
+| Key | Action |
 |---|---|
-| Платформ | MetaTrader 5 (**зөвхөн Windows**) |
-| Эмхэтгэгч | MetaEditor (MT5-тай хамт ирдэг) |
-| DLL | `user32.dll`, `shell32.dll` — MT5-д DLL import зөвшөөрөх ёстой |
-| PowerShell | Гурван popup цонхонд шаардлагатай |
-| NumLock | **ЗААВАЛ АСААХ.** Унтраалттай үед numpad нь сумны код илгээдэг тул товчлуур ажиллахгүй |
+| Numpad `.` | Arm / disarm new entries |
+| Numpad `1` | Market buy |
+| Numpad `2` | Market sell |
+| Numpad `0` | Move SL to break even |
+| Numpad `3` | Lock configured profit in SL |
+| Numpad `4` | Close half |
+| Numpad `5` | Move SL to configured trailing distance |
+| Numpad `6` | Set lot size |
+| Numpad `7` | Set SL price |
+| Numpad `8` | Protect selected positions from bulk actions |
+| Numpad `9` | Flatten non-protected positions, with confirmation |
 
----
+All keys are configurable in the EA inputs.
 
-## 2. Суулгах
+## Safety notes
 
-1. MT5 → **File → Open Data Folder** → `MQL5\Experts\` фолдер руу `.mq5` файлуудаа хуулна.
-2. MetaEditor дээр файлыг нээж **F7** дарж эмхэтгэнэ. Алдаа гарвал Build табд харагдана.
-3. MT5 → Navigator дээр баруун товч → **Refresh** → EA-г графикт чирж тавина.
+Trading software can cause financial loss. HotkeyTrader sends and modifies real orders when attached to a live account.
 
-**Чирч тавихад гарах цонхонд:**
-- **Common** таб → `Allow Algo Trading` ✔ , `Allow DLL imports` ✔
-- **Inputs** таб → доорх параметрүүдийг тохируулна
-- Хэрэгслийн мөрний **Algo Trading** товчийг бас асаана (ногоон болсон байх)
+- Test on a demo account first.
+- Keep the EA **DISARMED** when you are not actively trading.
+- Confirm that `InpSymbol` resolves to the intended broker symbol.
+- Verify `InpPointsPerPip` for each symbol before using stop-management hotkeys.
+- Be aware that management actions can affect positions on the configured symbol regardless of how those positions were opened.
+- Review the source before use and do not assume defaults are appropriate for your broker or account.
 
-> EA нь өөрийг нь тавьсан графикийн симболыг биш, **`InpSymbol` параметрт бичсэн симболыг** арилжаална. Тиймээс аль ч график дээр тавьж болно.
+This project is provided for software and workflow purposes, not financial advice.
 
-Амжилттай ачаалагдвал Experts табд `[HotkeyTrader] Ready | XAUUSD | ... | Entries DISARMED | ...` гэсэн мөр гарч, графикийн зүүн дээд буланд мэдээллийн самбар харагдана.
+## Contributing
 
----
+Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing.
 
-## 3. Товчлуурууд
+Good contribution areas include:
 
-| Товчлуур | Үйлдэл | Юу болох |
-|---|---|---|
-| **Numpad .** | Arm / Disarm | Шинэ позиц нээх зөвшөөрлийг асаах/унтраах |
-| **Numpad 1** | Long | Зах зээлийн худалдан авах захиалга (зөвхөн ARMED үед) |
-| **Numpad 2** | Short | Зах зээлийн худалдах захиалга (зөвхөн ARMED үед) |
-| **Numpad 0** | Break Even | SL-г **орсон үнэдээ** зөөнө |
-| **Numpad 3** | 20-pip BE | SL-г орсон үнээс **+20 пип ашигтай** цэгт зөөнө |
-| **Numpad 4** | Half | Позиц бүрийн **эзэлхүүний талыг** хаана |
-| **Numpad 5** | Trailing SL | SL-г одоогийн үнээс **10 пипийн зайд** зөөнө (нэг удаагийн) |
-| **Numpad 6** | Лот тохируулах | Лотын хэмжээг гараар бичих цонх |
-| **Numpad 7** | SL тавих | Бүх позицид нэг SL үнэ тавих цонх |
-| **Numpad 8** | Хамгаалах | Бөөнөөр хийх үйлдлээс алгасах позицуудыг сонгох цонх |
-| **Numpad 9** | Flatten | Бүх позицийг хаана — **хоёр удаа дарж** баталгаажуулна |
+- broker compatibility
+- safer execution and validation
+- testability and reproducible bug reports
+- accessibility and keyboard configuration
+- documentation
+- localization
 
-Товчлуур бүр **нэг дарахад нэг л удаа** ажиллана (дарж барьсан ч давтахгүй), мөн **глобал** — MT5 идэвхгүй, багасгасан байсан ч ажиллана.
+## Security
 
-### Arm / Disarm хаалт (Numpad .)
+Please do not publish sensitive account information, broker credentials, API keys, screenshots containing account IDs, or live trading details in issues. See [SECURITY.md](SECURITY.md).
 
-EA ачаалагдахдаа **DISARMED** байдалтай эхэлдэг (`InpStartArmed = false`). Энэ үед:
+## License
 
-- **Numpad 1 / 2 ажиллахгүй** — санамсаргүй позиц нээхээс хамгаална
-- **Бусад бүх товчлуур хэвийн ажиллана** — BE, Trail, Half, Flatten, SL тавих
+MIT. See [LICENSE](LICENSE).
 
-Өөрөөр хэлбэл гарцыг хэзээ ч хаадаггүй, зөвхөн **шинэ орцыг** хаадаг. Арилжаа эхлэхийн өмнө Numpad `.` дарж ARMED болгоно; дуусаад дахин дарж унтраана.
+## Documentation
 
-**30 минут** (`InpAutoDisarmMin`) ямар ч захиалга илгээгээгүй бол EA өөрөө DISARMED болно — компьютероо орхиод явахад хамгаалалт болно.
+- [Монгол гарын авлага](docs/README.mn.md)
 
-### Flatten баталгаажуулалт (Numpad 9)
+## Project status
 
-Эхний даралт зөвхөн "зэвсэглэнэ" — самбарт `>>> FLATTEN: press again to confirm <<<` гэж гарна. **3 секундын дотор** (`InpFlattenConfirmSec`) дахин дарвал бүх позиц хаагдана. Дарахгүй бол болих нь цуцлагдана. `0` болговол баталгаажуулалтгүй, нэг дарахад шууд хаана.
+Actively maintained as a small open-source utility. The current goal is to make manual MT5 execution safer, clearer, and easier to customize across brokers.
 
-### Хамгаалалттай позиц (Numpad 8)
-
-Нээлттэй позицуудын жагсаалт (ticket, төрөл, лот, орсон үнэ, одоогийн үнэ, ашиг) бүхий цонх гарна. **Тэмдэглэсэн позицийг хамгаалагдсан** гэж үзэж дараах бүх үйлдэл алгасна:
-
-Flatten · Half · Break Even · 20-pip BE · Trailing SL · SL тавих
-
-Жишээ: урт хугацааны нэг позицоо тэмдэглээд, үлдсэн скальп позицуудаа Numpad 9-ээр цэвэрлэж болно. Самбарт `Protected : N position(s)` гэж харагдана.
-
----
-
-## 4. Ердийн ажиллагааны урсгал
-
-1. **Numpad .** — ARMED болгоно.
-2. **Numpad 6** — лотоо тохируулна (жишээ нь `0.05`).
-3. Дохио гарахад **Numpad 1** эсвэл **2** дарж орно.
-4. Үнэ ашиг руу явсны дараа **Numpad 0** дарж эрсдэлээ тэглэнэ.
-5. Улам явбал **Numpad 3** дарж +20 пип ашгаа түгжинэ.
-6. Хэсэгчлэн ашиг авах бол **Numpad 4** — эзэлхүүний тал хаагдана.
-7. Хүчтэй хөдөлгөөн үед **Numpad 5** дарж SL-г үнэ рүү ойртуулна.
-8. Дуусгахдаа **Numpad 9 ×2** — бүгдийг хаана. Дараа нь **Numpad .** дарж унтраана.
-
----
-
-## 5. Оролтын параметрүүд
-
-| Параметр | Өгөгдмөл | Тайлбар |
-|---|---|---|
-| `InpSymbol` | `XAUUSD` | Бүх үйлдэл явагдах симбол |
-| `InpLots` | `0.01` | Эхлэх лотын хэмжээ |
-| `InpLongKey` | `0x61` | Long (Numpad 1) |
-| `InpShortKey` | `0x62` | Short (Numpad 2) |
-| `InpBEKey` | `0x60` | Break Even (Numpad 0) |
-| `InpBE20Key` | `0x63` | +20 пип BE (Numpad 3) |
-| `InpHalfKey` | `0x64` | Half (Numpad 4) |
-| `InpTrailKey` | `0x65` | Trailing SL (Numpad 5) |
-| `InpLotKey` | `0x66` | Лот оруулах цонх (Numpad 6) |
-| `InpSLKey` | `0x67` | SL оруулах цонх (Numpad 7) |
-| `InpProtectKey` | `0x68` | Хамгаалах цонх (Numpad 8) |
-| `InpFlattenKey` | `0x69` | Flatten (Numpad 9) |
-| `InpArmKey` | `0x6E` | Arm / Disarm (Numpad .) |
-| `InpPointsPerPip` | `10` | 1 пип хэдэн пойнт вэ (алт: 10 → 1 пип = 0.10) |
-| `InpBE20Pips` | `20` | Numpad 3 хэдэн пип ашиг түгжих вэ |
-| `InpTrailPips` | `10` | Numpad 5 үнээс хэдэн пипийн зайд SL тавих вэ |
-| `InpStartArmed` | `false` | Ачаалахдаа шууд ARMED болох эсэх |
-| `InpAutoDisarmMin` | `30` | Хэдэн минут чимээгүй байвал өөрөө унтрах вэ (0 = хэзээ ч үгүй) |
-| `InpFlattenConfirmSec` | `3` | Flatten-ийн 2 дахь даралтад өгөх хугацаа (0 = баталгаажуулалтгүй) |
-| `InpPopupTimeoutSec` | `120` | Хариугүй цонхыг хэдэн секундын дараа орхих вэ (0 = үүрд хүлээх) |
-| `InpSlippagePoints` | `20` | Зөвшөөрөх дээд хальтрал (пойнт) |
-| `InpMagic` | `20260408` | EA-ын magic дугаар |
-
-Бүх товчлуур параметр учраас **дахин эмхэтгэлгүйгээр** EA-ийн тохиргооны цонхноос өөрчилж болно. Шинэ товчлуурын VK кодыг мэдэхгүй бол `KeyDetector.mq5`-ыг графикт тавиад тухайн товчоо дарж Experts табаас кодыг нь уншина.
-
-### Пип ба пойнт
-
-`1 пип = InpPointsPerPip × SYMBOL_POINT`
-
-2 оронтой алтны ханш дээр: `SYMBOL_POINT = 0.01`, `InpPointsPerPip = 10` → **1 пип = 0.10**.
-
-Өөр симбол руу шилжихдээ энэ утгыг заавал шалгана. Буруу бол SL-ийн зай 10 дахин алдаатай тооцогдоно.
-
----
-
-## 6. Хамгаалалтын дүрмүүд (яагаад "skipped" гэж бичигдэв?)
-
-Бөөнөөр хийх үйлдлүүд `InpSymbol` дээрх бүх нээлттэй позицид үйлчилнэ. Дараах тохиолдолд позицийг **алгасна**:
-
-| Дүрэм | Хамаарах үйлдэл |
-|---|---|
-| Тухайн позиц **хамгаалагдсан** (Numpad 8) | бүгд |
-| SL зөвхөн **чангардаг** — эрсдэл нэмэх тийш зөөгдөхгүй | BE, 20-pip BE, Trail |
-| Брокерын **хамгийн бага зай** (`SYMBOL_TRADE_STOPS_LEVEL`) дотор байвал | BE, 20-pip BE, Trail, SL тавих |
-| SL үнэ зах зээлийн **буруу талд** байвал | SL тавих (Numpad 7) |
-| Тал нь эсвэл үлдэгдэл нь **хамгийн бага лотоос бага** бол | Half (Numpad 4) |
-
-Тиймээс үнэ хангалттай ашиг руу яваагүй байхад Numpad 0 дарвал юу ч болохгүй. Энэ нь алдаа биш:
-
-```
-[HotkeyTrader] Break Even: 2 moved, 1 skipped
-[HotkeyTrader] HALF: 3 halved, 1 too small to split
-```
-
-> **Анхаар:** эдгээр үйлдэл позицийг magic дугаараар нь шүүдэггүй, зөвхөн симболоор шүүнэ. Өөрөөр хэлбэл `InpSymbol` дээр гараараа нээсэн эсвэл өөр EA-ийн нээсэн позицид бас үйлчилнэ. Хамгаалах бол Numpad 8-ыг ашиглана.
-
----
-
-## 7. Popup цонхнууд (Numpad 6, 7, 8)
-
-Гурван цонх бүгд PowerShell-ээр ажилладаг. **Цонх нээлттэй байх хугацаанд бүх товчлуур идэвхгүй болно** — учир нь та цонхонд бичиж буй тоонууд глобал түвшинд харагдах тул захиалга явуулчих эрсдэлтэй. **Cancel** дарсан ч EA суллагдана (цонх бүр хариу бичдэг), тиймээс гацахгүй. Хэрэв PowerShell процесс сүйдэж цонх хариу өгөхгүй бол **120 секундын дараа** (`InpPopupTimeoutSec`) EA өөрөө бүх товчлуураа сулладаг — эс бөгөөс Flatten хүртэл ажиллахаа болих байсан.
-
-| Цонх | Юу хийх | Cancel дарвал |
-|---|---|---|
-| Numpad 6 | Лотын хэмжээ бичих (одоогийнх нь урьдчилан бичигдсэн) | Хуучин лот хэвээр |
-| Numpad 7 | Бүх позицид тавих SL үнэ (талбар хоосон; гарчигт Bid/Ask харагдана) | Юу ч өөрчлөгдөхгүй |
-| Numpad 8 | Хамгаалах позицуудыг тэмдэглэх | Хуучин сонголт хэвээр |
-
-Оруулсан лотыг брокерын алхам/доод/дээд хязгаарт автоматаар нийцүүлнэ (`0.007` → `0.01`). Таслал болон цэг хоёуланг нь ойлгоно (`0,05` = `0.05`).
-
-> **SL үнэ бичихдээ:** LONG позицид SL нь **зах зээлээс доош**, SHORT позицид **дээш** байх ёстой. Зах зээлийн үнэтэй тэнцүү юмуу хэт ойрхон үнийг брокер хүлээж авахгүй тул EA тухайн позицийг алгасаад Experts табд яг ямар үнэ шаардлагатайг бичнэ.
-
-Файлын солилцоо MT5-ын `Common Files\Files\` фолдерт явагдана:
-
-| Файл | Чиглэл | Зориулалт |
-|---|---|---|
-| `ht_lot_input.ps1` / `ht_lot_result.txt` | EA ↔ PS | Лотын цонх |
-| `ht_sl_input.ps1` / `ht_sl_result.txt` | EA ↔ PS | SL-ийн цонх |
-| `ht_protect_input.ps1` / `ht_protect_result.txt` | EA ↔ PS | Хамгаалах цонх |
-
----
-
-## 8. ⚠️ Анхааруулга
-
-- **Товчлуурууд глобал.** Өөр програм дээр (Excel, чат, тоглоом) numpad дээр тоо бичихэд үйлдэл хийгдэж мэднэ. Тиймээс арилжаа хийхгүй үедээ **DISARMED** байлгана — гэхдээ энэ нь зөвхөн орцыг хаана, Flatten/Half/BE зэрэг нь ажилласан хэвээр байна.
-- **Орох захиалгад SL/TP тавигддаггүй.** Numpad 1/2 нь хамгаалалтгүй позиц нээдэг. SL-г Numpad 0/3/5/7-оор эсвэл MT5-аас гараар тавина.
-- **Numpad 9 бүх позицийг хаана** — хамгаалагдсанаас бусдыг. Хоёр дахь даралт нь баталгаажуулалт гэдгийг мартаж болохгүй.
-- **NumLock унтарвал** бүх товчлуур чимээгүйхэн ажиллахаа болино.
-- **Эхлээд демо данс дээр** бүх товчлуураа шалгаад дараа нь бодит данс руу оруулна.
-
----
-
-## 9. Оношлогоо
-
-Графикийн самбар дээр EA-ийн **бодитоор харж байгаа** төлөв харагдана:
-
-```
-HotkeyTrader v5   build 2026.09.21 15:30   [ ARMED ]
-  !! CANNOT TRADE: Algo Trading is OFF (toolbar button)     ← хаалттай үед л гарна
-Symbol : XAUUSD      Lots : 0.01
-Open   : 6 position(s) on this symbol   Protected : 0
-```
-
-- **`Open : 0`** байхад MT5-ын Trade табд позиц харагдаж байвал → симболын нэр таарахгүй байна. `InpSymbol`-оо брокерын яг бичлэгтэй тааруул (EA одоо үсгийн том жижгийг үл харгалзан таниулдаг болсон; лог дээр `Symbol 'XAUUSD' resolved to the broker's '...'` гэж бичнэ).
-- **`!! CANNOT TRADE: ...`** мөр гарвал шалтгааныг нь шууд бичсэн байна — Algo Trading унтраатай, EA-ийн checkbox тэмдэглэгдээгүй, данс арилжаалах эрхгүй гэх мэт.
-- Захиалга серверт татгалзагдвал `Server REFUSED the request: retcode=... (тайлбар)` гэж Experts табд гарна.
-- **`build ...`** нь тухайн EA хэзээ эмхэтгэгдсэнийг харуулна. Эмхэтгэсэн ч энэ цаг өөрчлөгдөөгүй бол график дээр **өөр хуулбар** ажиллаж байна (Navigator дотор хэд хэдэн фолдерт HotkeyTrader байж болно). Эхлэхдээ Experts табд `Running <файлын зам>, compiled ...` гэж бүтэн замыг бичнэ.
-
-## 10. Алдаа олж засах
-
-| Шинж тэмдэг | Шалтгаан / шийдэл |
-|---|---|
-| Numpad 1/2 ажиллахгүй, лог дээр `entries are DISARMED` | Numpad `.` дарж ARMED болгоно |
-| Товчлуур огт ажиллахгүй | NumLock унтарсан; Algo Trading идэвхгүй; DLL import зөвшөөрөөгүй |
-| 30 минутын дараа өөрөө унтарсан | `InpAutoDisarmMin` — хэвийн үйлдэл, дахин Numpad `.` |
-| `Buy FAILED retcode=...` | Мөнгө хүрэлцэхгүй, зах зээл хаалттай, эсвэл симбол буруу |
-| `Break Even: 0 moved, N skipped` | 6-р хэсгийн дүрмүүдийг үзнэ үү |
-| `HALF: 0 halved, N too small to split` | Лот жижиг — тал нь хамгийн бага лотоос бага байна |
-| `Set SL ...: 0 moved, N skipped` | SL үнэ буруу талд эсвэл зах зээлд хэт ойрхон байна. Дараагийн мөрөнд яг ямар үнээс дээш/доош байх ёстойг бичсэн байна |
-| `Popup launch failed rc=...` | PowerShell хаагдсан/хориотой; антивирус блоклосон |
-| Цонх гарсан ч товчлуур сэргэхгүй | Цонх нээлттэй хэвээр — OK эсвэл Cancel дарна |
-| `Popup gave no answer in N s` | Цонх сүйдсэн тул EA өөрөө товчлуурыг суллав — юу ч өөрчлөгдөөгүй, дахин оролдоно |
-
----
-
-## 11. Техникийн товч тайлбар
-
-- `OnTimer()` 10 мс тутам ажиллаж `GetAsyncKeyState`-ээр товчлуурын төлвийг уншина. `OnTick()` зориуд хоосон.
-- Орц ба хаалт — `OrderSendAsync` (хурдан, хариу хүлээхгүй). SL зөөх — `TRADE_ACTION_SLTP`-тэй синхрон `OrderSend`.
-- Flatten/Half нь хаалт эхлэхээс өмнө ticket-үүдээ урьдчилан цуглуулдаг (хаалт бүр жагсаалтыг өөрчилдөг тул).
-- Дүүргэлтийн горимыг (IOC/FOK/Return) симболын `SYMBOL_FILLING_MODE`-оос автоматаар сонгоно.
-- Auto-disarm нь `TimeLocal()` ашигладаг тул тик ирэхгүй байсан ч цаг явсаар байна.
-
-Илүү дэлгэрэнгүй бүтцийн тайлбарыг `CLAUDE.md`-ээс үзнэ үү.
